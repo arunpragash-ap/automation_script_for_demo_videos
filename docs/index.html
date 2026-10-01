@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>video-ai-dub Documentation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] } } } }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html { scroll-behavior: smooth; }
+.mermaid { display: flex; justify-content: center; }
+.mermaid svg { max-width: none; height: auto; }
+section { scroll-margin-top: 1.5rem; }
+pre code { font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+
+<aside class="hidden lg:block fixed inset-y-0 left-0 w-64 bg-slate-900 text-slate-300 overflow-y-auto">
+  <div class="px-5 py-6 border-b border-slate-800">
+    <div class="text-white font-bold text-lg">video-ai-dub</div>
+    <div class="text-xs text-slate-400 mt-1">AI voice-over for demo videos</div>
+  </div>
+  <nav class="px-3 py-4 text-sm space-y-5">
+    <div>
+      <div class="px-2 mb-1 text-[11px] uppercase tracking-wider text-slate-500">Guide</div>
+      <a href="#overview" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Overview</a>
+      <a href="#usage" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Usage</a>
+      <a href="#structure" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Folder structure</a>
+    </div>
+    <div>
+      <div class="px-2 mb-1 text-[11px] uppercase tracking-wider text-slate-500">Diagrams</div>
+      <a href="#architecture" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">System architecture</a>
+      <a href="#flow-cli" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">CLI flow</a>
+      <a href="#flow-pipeline" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Pipeline flow</a>
+      <a href="#flow-timing" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Timing and final video</a>
+      <a href="#seq-dub" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Sequence: dubbing</a>
+      <a href="#seq-speech" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Sequence: speech fit</a>
+      <a href="#seq-apply" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Sequence: apply edits</a>
+      <a href="#state" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">State: project lifecycle</a>
+      <a href="#render" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Render flow</a>
+      <a href="#classes" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Class diagram</a>
+      <a href="#data" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Data model (ER)</a>
+    </div>
+    <div>
+      <div class="px-2 mb-1 text-[11px] uppercase tracking-wider text-slate-500">Implementation</div>
+      <a href="#modules" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Module reference</a>
+      <a href="#steps" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Pipeline steps</a>
+      <a href="#design" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Design decisions</a>
+      <a href="#options" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Options</a>
+      <a href="#logs" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Logs</a>
+      <a href="#requirements" class="block px-2 py-1 rounded hover:bg-slate-800 hover:text-white">Requirements</a>
+    </div>
+  </nav>
+</aside>
+
+<main class="lg:ml-64 px-5 sm:px-8 py-10 max-w-6xl space-y-16">
+
+<header class="space-y-4">
+  <h1 class="text-4xl font-bold tracking-tight text-slate-900">video-ai-dub</h1>
+  <p class="text-lg text-slate-600 max-w-3xl">Replace the speech in a video with a natural AI voice-over timed to the original, add an optional title intro and a Thank You end card, then polish the result with cuts, mutes, shifts and extra narration. Needs only an OpenAI API key and ffmpeg.</p>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 font-medium">Python 3</span>
+    <span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">OpenAI Whisper + TTS + GPT</span>
+    <span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">ffmpeg</span>
+    <span class="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-medium">Pillow</span>
+    <span class="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-medium">No third-party Python packages besides Pillow</span>
+  </div>
+</header>
+
+<section id="overview" class="space-y-5">
+  <h2 class="text-2xl font-bold text-slate-900">Overview</h2>
+  <p>Three command-line tools share one package, <code class="px-1.5 py-0.5 rounded bg-slate-200 text-sm font-mono">dubber/</code>.</p>
+  <div class="grid md:grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+      <div class="text-xs font-semibold text-indigo-600 uppercase">Tool 1</div>
+      <h3 class="font-semibold text-lg mt-1">ai_dub.py</h3>
+      <p class="text-sm text-slate-600 mt-2">Seven-step pipeline: extract audio, transcribe, validate, rewrite script, synthesize speech, build cards, assemble the final video. Auto or human-in-the-loop mode.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+      <div class="text-xs font-semibold text-emerald-600 uppercase">Tool 2</div>
+      <h3 class="font-semibold text-lg mt-1">demo.py</h3>
+      <p class="text-sm text-slate-600 mt-2">Demo studio. Project folder with versions, undo and redo. Queue edits (cut, mute, shift-audio, narrate, replace-voice), check them, apply in one render pass.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+      <div class="text-xs font-semibold text-amber-600 uppercase">Tool 3</div>
+      <h3 class="font-semibold text-lg mt-1">video_edit.py</h3>
+      <p class="text-sm text-slate-600 mt-2">Stateless one-shot edits. <code class="font-mono text-xs">cut</code> removes ranges, <code class="font-mono text-xs">narrate</code> adds AI voice at a time, <code class="font-mono text-xs">info</code> prints details.</p>
+    </div>
+  </div>
+  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
+    The original video is never modified. Every tool writes into a separate folder next to it and logs every run to JSON.
+  </div>
+</section>
+
+<section id="usage" class="space-y-6">
+  <h2 class="text-2xl font-bold text-slate-900">Usage</h2>
+
+  <div class="space-y-3">
+    <h3 class="text-lg font-semibold">1. Set up</h3>
+    <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm overflow-x-auto"><code>brew install ffmpeg
+python3 -m pip install pillow
+echo 'export OPENAI_API_KEY=sk-...' &gt;&gt; ~/.zshrc &amp;&amp; source ~/.zshrc</code></pre>
+  </div>
+
+  <div class="space-y-3">
+    <h3 class="text-lg font-semibold">2. Dub a raw recording: <span class="font-mono text-base">ai_dub.py</span></h3>
+    <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm overflow-x-auto"><code>python3 ai_dub.py my_video.mp4
+python3 ai_dub.py my_video.mp4 --context-file project_context.txt --voice nova</code></pre>
+    <p class="text-sm text-slate-600">You are asked for a title (Enter skips the intro) and a mode.</p>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="font-semibold">Auto</div>
+        <p class="text-sm text-slate-600 mt-1">Runs all seven steps with no questions.</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="font-semibold">Human-in-the-loop</div>
+        <p class="text-sm text-slate-600 mt-1">Asks for context and key terms, then pauses twice: after validation (raw transcript) and after the rewrite (script).</p>
+      </div>
+    </div>
+    <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-left"><tr><th class="px-4 py-2">Key at a review pause</th><th class="px-4 py-2">Action</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-4 py-2 font-mono">e</td><td class="px-4 py-2">Full-screen terminal editor (curses). Up/Down or j/k move, Enter edits a line, s saves, q cancels.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">o</td><td class="px-4 py-2">Open the markdown file in your text editor, save, press Enter back in the terminal.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">v</td><td class="px-4 py-2">Show the lines again.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">s</td><td class="px-4 py-2">Script pause only. Give the AI a suggestion for the whole script.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">p</td><td class="px-4 py-2">Proceed.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-sm text-slate-600">Run again on the same video and a menu appears: <code class="font-mono">a</code> all steps, <code class="font-mono">5</code> only step 5, <code class="font-mono">5+</code> step 5 onward, <code class="font-mono">q</code> quit. Unchanged speech lines are cached, so re-running audio only pays for edited lines.</p>
+    <p class="text-sm text-slate-600">Pause marker inside narration: <code class="font-mono">Click Next. [pause 2s] Then Start.</code> (<code class="font-mono">[pause]</code> = 1 s, max 10 s).</p>
+    <p class="text-sm text-slate-600">Project knowledge goes in a text file passed with <code class="font-mono">--context-file</code>. A line starting with <code class="font-mono">Terms:</code> also biases transcription.</p>
+  </div>
+
+  <div class="space-y-3">
+    <h3 class="text-lg font-semibold">3. Polish a video: <span class="font-mono text-base">demo.py</span></h3>
+    <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm overflow-x-auto"><code>python3 demo.py                                   # guided menu
+python3 demo.py new video.mp4                     # start a project
+python3 demo.py map video.demo                    # show where speech is
+python3 demo.py add video.demo "cut 02.58-03.06" "shift-audio 00.58 earlier 1s"
+python3 demo.py script video.demo edits.txt       # edits from a file
+python3 demo.py status video.demo
+python3 demo.py plan video.demo                   # check, render nothing
+python3 demo.py where video.demo 03.49            # time after pending cuts
+python3 demo.py preview video.demo                # low quality, not saved
+python3 demo.py apply video.demo [--snap] [--yes]
+python3 demo.py undo video.demo                   # and redo
+python3 demo.py export video.demo --out final.mp4
+python3 demo.py dub raw_recording.mp4             # run ai_dub flow</code></pre>
+    <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-left"><tr><th class="px-4 py-2">Edit word</th><th class="px-4 py-2">Example</th><th class="px-4 py-2">Effect</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-4 py-2 font-mono">cut</td><td class="px-4 py-2 font-mono">cut 02.58-03.06</td><td class="px-4 py-2">Remove that part of picture and sound. Re-encodes video.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">mute</td><td class="px-4 py-2 font-mono">mute 02.05-02.08</td><td class="px-4 py-2">Silence audio in that part.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">shift-audio</td><td class="px-4 py-2 font-mono">shift-audio 00.58 earlier 1s</td><td class="px-4 py-2">Move the speech block starting near that time. <code>gap</code> sets the silence that ends the block (default 2 s).</td></tr>
+          <tr><td class="px-4 py-2 font-mono">narrate</td><td class="px-4 py-2 font-mono">narrate 00.48-00.52 "Click Next."</td><td class="px-4 py-2">Add AI voice at a time. Window end optional.</td></tr>
+          <tr><td class="px-4 py-2 font-mono">replace-voice</td><td class="px-4 py-2 font-mono">replace-voice 02.05-02.08 "New text."</td><td class="px-4 py-2">Mute that part and speak new text there.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-sm text-slate-600">Times are <code class="font-mono">mm.ss</code> (<code class="font-mono">01.05</code> = 1 min 5 s); <code class="font-mono">1:05</code> and <code class="font-mono">65s</code> also work. <strong>All times in one batch refer to the video as it is now.</strong> Apply places audio edits first and cuts last, so earlier cuts never shift later times.</p>
+  </div>
+
+  <div class="space-y-3">
+    <h3 class="text-lg font-semibold">4. Quick one-off edits: <span class="font-mono text-base">video_edit.py</span></h3>
+    <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm overflow-x-auto"><code>python3 video_edit.py cut demo.mp4 --range 00.10-00.17 --range 01.05-01.20
+python3 video_edit.py narrate demo.mp4 --start 00.30 --end 00.40 --text "Tap Continue."
+python3 video_edit.py narrate demo.mp4 --script narration.txt     # START-END | text
+python3 video_edit.py narrate demo.mp4 --start 00.30 --text "Hi" --replace
+python3 video_edit.py info demo.mp4
+python3 video_edit.py                                              # interactive</code></pre>
+  </div>
+</section>
+
+<section id="structure" class="space-y-6">
+  <h2 class="text-2xl font-bold text-slate-900">Folder structure</h2>
+
+  <h3 class="text-lg font-semibold">Repository</h3>
+  <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm overflow-x-auto leading-relaxed"><code>video-ai-dub/
+├── ai_dub.py             entry point 1: interactive dubbing pipeline
+├── demo.py               entry point 2: demo studio (projects, versions, edits)
+├── video_edit.py         entry point 3: stateless cut / narrate / info
+├── README.md
+├── assets/
+│   ├── blank_screen.png      title card background
+│   └── thank_you_card.png    end card
+├── docs/
+│   └── index.html            this documentation
+└── dubber/               shared package
+    ├── config.py         constants, prompts, durations
+    ├── ui.py             prompts, single-line spinner status
+    ├── logs.py           JSON run log, API key redaction
+    ├── deps.py           ffmpeg and API key checks
+    ├── pipeline.py       Job, Step list, dependency checks, step runner
+    ├── review.py         human-in-the-loop checkpoints
+    ├── editor.py         curses full-screen line editor
+    ├── transcript.py     transcript markdown read/write
+    ├── script.py         transcript and script helpers
+    ├── openai_api.py     HTTP calls: transcribe, chat, TTS
+    ├── validate.py       line validation and report
+    ├── speech.py         TTS generation, caching, fit to slots
+    ├── pauses.py         [pause 2s] markers
+    ├── cards.py          title and end cards (Pillow)
+    ├── media.py          ffmpeg helpers, silence detection, assembly
+    ├── edits.py          parse edit words
+    ├── edit_ops.py       cut and narrate operations
+    ├── plan.py           pre-render checks and time map
+    ├── render.py         apply a batch of edits in one pass
+    ├── speechmap.py      speech blocks from silences
+    ├── project.py        project folder, versions, undo, pending edits
+    └── timecode.py       mm.ss parsing and formatting</code></pre>
+
+  <div class="grid lg:grid-cols-3 gap-4">
+    <div>
+      <h3 class="text-lg font-semibold mb-2">ai_dub output</h3>
+      <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-xs overflow-x-auto leading-relaxed"><code>my_video/
+├── my_video_ai.mp4
+├── transcript.md
+├── validation.md
+├── transcript_improved.md
+├── report.md
+├── logs/log_&lt;ts&gt;.json
+└── work/
+    ├── original.wav
+    ├── transcript.json
+    ├── validation.json
+    ├── second_transcription.txt
+    ├── speech.json
+    ├── title_card.png
+    ├── end_card.png
+    ├── title_voice.json
+    ├── settings.json
+    └── *.wav  ai_track.m4a</code></pre>
+    </div>
+    <div>
+      <h3 class="text-lg font-semibold mb-2">demo.py project</h3>
+      <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-xs overflow-x-auto leading-relaxed"><code>my_video.demo/
+├── project.json
+├── source.mp4
+├── versions/
+│   ├── v1.mp4
+│   └── v2.mp4
+├── previews/preview.mp4
+├── cache/      voices
+├── work/       temp
+└── logs/
+
+~/.demo_studio.json
+  recent projects (max 8)</code></pre>
+    </div>
+    <div>
+      <h3 class="text-lg font-semibold mb-2">video_edit output</h3>
+      <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-xs overflow-x-auto leading-relaxed"><code>demo_edits/
+├── demo_edited.mp4
+├── logs/
+└── work/</code></pre>
+    </div>
+  </div>
+</section>
+
+<section id="architecture" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">System architecture</h2>
+  <p class="text-slate-600">Three entry scripts sit on one shared package. Only <code class="font-mono text-sm">openai_api.py</code> talks to OpenAI, only <code class="font-mono text-sm">media.py</code> and <code class="font-mono text-sm">edit_ops.py</code> shell out to ffmpeg, only <code class="font-mono text-sm">cards.py</code> uses Pillow. <code class="font-mono text-sm">logs.py</code> and <code class="font-mono text-sm">ui.py</code> are used by nearly every module (edges omitted).</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart LR
+  subgraph CLI["Entry points"]
+    A["ai_dub.py<br/>AI dubbing"]
+    B["demo.py<br/>Demo studio"]
+    C["video_edit.py<br/>Cut and narrate"]
+  end
+  subgraph CORE["dubber package"]
+    PIPE["pipeline.py<br/>Job + 7 Steps"]
+    REV["review.py<br/>editor.py"]
+    VAL["validate.py"]
+    SPE["speech.py<br/>pauses.py"]
+    CAR["cards.py"]
+    SCR["script.py<br/>transcript.py"]
+    PRJ["project.py<br/>versions, undo"]
+    EDT["edits.py<br/>plan.py<br/>speechmap.py"]
+    REN["render.py"]
+    EOP["edit_ops.py"]
+    API["openai_api.py"]
+    MED["media.py"]
+  end
+  subgraph EXT["External"]
+    OAI["OpenAI API<br/>whisper, gpt-4.1, TTS"]
+    FFM["ffmpeg / ffprobe"]
+    PIL["Pillow"]
+  end
+  A --> PIPE
+  A --> REV
+  B --> PRJ
+  B --> EDT
+  B --> REN
+  B -->|dub command| A
+  C --> EOP
+  PIPE --> VAL
+  PIPE --> SPE
+  PIPE --> CAR
+  PIPE --> SCR
+  PIPE --> MED
+  PIPE --> API
+  REV --> API
+  REV --> SCR
+  VAL --> MED
+  SPE --> API
+  SPE --> MED
+  REN --> EOP
+  REN --> MED
+  EDT --> SPE
+  EDT --> MED
+  EOP --> SPE
+  EOP --> API
+  EOP --> MED
+  API --> OAI
+  MED --> FFM
+  CAR --> PIL
+</pre>
+  </div>
+</section>
+
+<section id="flow-cli" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">CLI flow: <span class="font-mono text-xl">ai_dub.py</span></h2>
+  <p class="text-slate-600">What <code class="font-mono text-sm">main()</code> does before any step runs: validate input, resume a previous run, ask title and mode, check dependencies.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart TD
+  S(["python3 ai_dub.py video.mp4"]) --> P["parse_args"]
+  P --> V{"video file exists?"}
+  V -->|no| X1(["die: video not found"])
+  V -->|yes| J["Job created<br/>load_settings from work/settings.json"]
+  J --> PR{"previous run found?"}
+  PR -->|yes| PK["pick_steps<br/>a / N / N+ / q"]
+  PK --> Q{"quit?"}
+  Q -->|yes| X2(["Nothing to do"])
+  Q -->|no| T
+  PR -->|no| ALL["selected = all 7 steps"] --> T
+  T["ask_title<br/>Enter skips intro"] --> M["ask_mode"]
+  M --> MM{"mode"}
+  MM -->|human| CT["ask context and key terms"] --> D
+  MM -->|auto| D
+  D["find_problems<br/>tools, API key, Pillow, font, input files"] --> DP{"problems?"}
+  DP -->|yes| X3(["list fixes, exit 1"])
+  DP -->|no| W["makedirs work, save_settings, open JSON log"]
+  W --> R["pipeline.run_steps"]
+  R --> OK{"outcome"}
+  OK -->|success| DONE(["Done: list output files"])
+  OK -->|failed or Ctrl+C| ERR(["message + log path, exit 1"])
+</pre>
+  </div>
+</section>
+
+<section id="flow-pipeline" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Pipeline flow</h2>
+  <p class="text-slate-600">Seven steps run in order. Human review checkpoints run only in human mode: after step 3 (raw transcript) and after step 4 (script, with an AI-suggestion loop).</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart TD
+  IN[("video.mp4")] --> S1
+  S1["1 Extract audio<br/>ffmpeg to original.wav"] --> S2
+  S2["2 Transcribe<br/>whisper-1, segments with timestamps"] --> S3
+  S3["3 Validate<br/>silence check + second transcription<br/>writes validation.md"] --> H1
+  H1{"human mode?"}
+  H1 -->|yes| R1["Review 1: raw transcript<br/>e / o / v / p"] --> S4
+  H1 -->|no| S4
+  S4["4 Improve script<br/>gpt-4.1: grammar, terms, slot length<br/>writes transcript_improved.md"] --> H2
+  H2{"human mode?"}
+  H2 -->|yes| R2["Review 2: script<br/>e / o / v / p / s"]
+  R2 -->|s: suggestion| SG["AI rewrites whole script"] --> R2
+  R2 -->|p: approve| S5
+  H2 -->|no| S5
+  S5["5 Speech<br/>gpt-4o-mini-tts per line<br/>fit loop, thanks voice"] --> S6
+  S6["6 Cards<br/>title card + title voice + end card"] --> S7
+  S7["7 Assemble<br/>mix, denoise, loudnorm, concat<br/>writes report.md"] --> OUT
+  OUT[("video_ai.mp4")]
+</pre>
+  </div>
+
+  <h3 class="text-lg font-semibold pt-4">Step 2 in detail: transcription clean-up</h3>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart LR
+  W["Whisper segments"] --> T{"title given?"}
+  T -->|yes| TI["LLM: first sentence only repeats title?<br/>remove it"]
+  T -->|no| C
+  TI --> C["LLM: closing thank-you in last 2 lines?<br/>remove it"]
+  C --> H["drop_hallucinations<br/>repeats, speech-less lines, no_speech flag"]
+  H --> O["transcript.json + transcript.md"]
+</pre>
+  </div>
+</section>
+
+<section id="flow-timing" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Timing and final video</h2>
+  <p class="text-slate-600">Each line is anchored to measured speech onset, starts <code class="font-mono text-sm">--lead</code> (1.0 s) early, and must end within <code class="font-mono text-sm">--end-grace</code> (0.5 s) of the original end. Lines that do not fit are sped up to <code class="font-mono text-sm">--max-tempo</code> (1.3x) or shortened by the model.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart TD
+  A["Whisper start / end"] --> B["refine_edges<br/>snap to silence boundaries from ffmpeg silencedetect"]
+  B --> C["assign_slots<br/>place = start - lead<br/>slot_end = min(next place - 0.05, end + grace)<br/>slot = slot_end - place, min 0.8 s"]
+  C --> D["TTS clip, silence trimmed at both ends"]
+  D --> E{"clip length / max_tempo<br/>fits slot?"}
+  E -->|yes| F["atempo = max(1, length / slot)"]
+  E -->|no| G["LLM shorten to char limit<br/>up to 3 rounds"] --> D
+  F --> H["adelay to place, amix all lines"]
+</pre>
+  </div>
+
+  <h3 class="text-lg font-semibold pt-4">Final video layout</h3>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart LR
+  I["Title card<br/>only if title given<br/>max(2 s, 0.4 + voice + 0.6)<br/>voice: This video demonstrates TITLE"]
+  M["Original video<br/>original audio replaced by AI track"]
+  E["Thank You card<br/>3 s<br/>voice: Thank you."]
+  I --> M --> E
+</pre>
+  </div>
+</section>
+
+<section id="seq-dub" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Sequence: dubbing run (human mode)</h2>
+  <p class="text-slate-600">Who calls whom, in order. In auto mode the two review blocks are skipped. Every call is also written to the JSON log.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant CLI as ai_dub.py
+  participant PL as pipeline.py
+  participant FF as ffmpeg
+  participant OA as OpenAI API
+  participant FS as Output folder
+
+  U->>CLI: video, title, mode, context
+  CLI->>PL: find_problems, then run_steps
+  PL->>FF: extract audio
+  FF-->>FS: work/original.wav
+  PL->>OA: audio/transcriptions whisper-1
+  OA-->>PL: timed segments
+  PL->>OA: chat: drop title intro, closing thanks
+  PL->>FF: silencedetect, drop hallucinated lines
+  PL-->>FS: transcript.md, transcript.json
+  PL->>FF: compress audio
+  PL->>OA: audio/transcriptions gpt-4o-transcribe
+  OA-->>PL: reference text
+  PL-->>FS: validation.md
+  rect rgb(238, 242, 255)
+    PL->>U: Review 1 raw transcript
+    U->>FS: edit transcript.md
+    U->>PL: proceed
+  end
+  PL->>OA: chat completions improve_segments, chunks of 60
+  OA-->>PL: improved lines
+  PL-->>FS: transcript_improved.md
+  rect rgb(238, 242, 255)
+    loop until approved
+      PL->>U: Review 2 script
+      U->>PL: suggestion or proceed
+      PL->>OA: rewrite with feedback
+    end
+  end
+  PL->>OA: audio/speech per line, fit loop
+  OA-->>PL: wav clips
+  PL->>OA: speech for title and thank you
+  PL->>FF: build track, concat title + video + end card
+  FF-->>FS: video_ai.mp4
+  PL-->>FS: report.md, logs/log.json
+  CLI-->>U: Done, file list
+</pre>
+  </div>
+</section>
+
+<section id="seq-speech" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Sequence: speech generation and fit</h2>
+  <p class="text-slate-600"><code class="font-mono text-sm">speech.synth_and_fit</code> runs up to four rounds. Clips are cached by a hash of model, voice, style and text, so unchanged lines cost nothing.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+sequenceDiagram
+  participant SP as speech.py
+  participant C as work cache
+  participant OA as openai_api
+  participant FF as ffmpeg
+
+  loop round 1 to 4
+    loop each non-empty line
+      SP->>C: wav exists for hash?
+      alt cache miss
+        SP->>OA: synthesize text
+        OA-->>C: raw wav
+      end
+      SP->>FF: trim silence at both ends
+      FF-->>C: trimmed wav
+      SP->>FF: probe duration
+      Note over SP: over = duration / max_tempo greater than slot
+    end
+    alt no line is over
+      SP-->>SP: all lines fit, stop
+    else lines over and round less than 4
+      SP->>OA: shorten text to character limit
+      OA-->>SP: shorter text
+    end
+  end
+  Note over SP: still overflowing lines get a warning
+</pre>
+  </div>
+</section>
+
+<section id="seq-apply" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Sequence: demo.py apply</h2>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant D as demo.py
+  participant P as Project
+  participant PL as plan.py
+  participant R as render.py
+  participant OA as OpenAI API
+  participant FF as ffmpeg
+
+  U->>D: apply video.demo
+  D->>D: require API key only if an edit uses speech
+  D->>PL: analyse(current file, pending edits)
+  PL->>FF: silencedetect, probe
+  PL-->>D: rows with warnings and errors
+  alt any error
+    D-->>U: fix problems, abort
+  else speech edge warnings
+    D->>U: extend edges to clean speech? Y/n
+  end
+  D->>U: Apply now? Y/n
+  U-->>D: yes
+  D->>R: render(current file, edits, out)
+  opt narrate or replace-voice
+    R->>OA: TTS per line, cached
+  end
+  R->>FF: audio pass, video stream copied
+  opt cuts present
+    R->>FF: cut, re-encode H.264 CRF 18
+  end
+  FF-->>D: versions/vN.mp4
+  D->>P: commit(edits, path)
+  P-->>P: drop redo branch, append version, clear pending, save project.json
+  D-->>U: Saved version vN
+</pre>
+  </div>
+</section>
+
+<section id="state" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">State: project lifecycle</h2>
+  <p class="text-slate-600">Edits wait in a to-do list. Each successful apply creates a version. A failed or interrupted apply changes nothing.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> Created: demo.py new
+  Created --> Pending: add or script
+  Pending --> Pending: add or remove edit
+  Pending --> Checked: plan
+  Checked --> Pending: errors found, fix edits
+  Checked --> Rendering: apply confirmed
+  Rendering --> Pending: failure or Ctrl+C, nothing saved
+  Rendering --> Saved: commit new version
+  Saved --> Pending: add more edits
+  Saved --> Undone: undo
+  Undone --> Saved: redo
+  Undone --> Pending: add edit, redo branch dropped
+  Saved --> Exported: export
+  Exported --> [*]
+  Pending --> Previewed: preview
+  Previewed --> Pending: not saved
+</pre>
+  </div>
+</section>
+
+<section id="render" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Render flow: one pass for a batch</h2>
+  <p class="text-slate-600">Audio edits are resolved against the current version first, mixed in one ffmpeg call with the video stream copied. Cuts run last, so every time in a batch refers to the video as it is now.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+flowchart TD
+  E["pending edits"] --> CK["check_edits<br/>start past end: error, end past video: clipped"]
+  CK --> SP{"split by type"}
+  SP --> CUTS["cuts"]
+  SP --> AUD["mute, shift, narrate, replace"]
+  AUD --> MV["make_voices<br/>TTS per part, pauses, fit to window<br/>cache by text hash"]
+  AUD --> RS["resolve_shifts<br/>silencedetect, find speech block<br/>warn on overlap at destination"]
+  AUD --> MU["mute windows<br/>mutes + shifted source + replace windows"]
+  MV --> AP
+  RS --> AP
+  MU --> AP
+  AP["audio_pass<br/>one ffmpeg filter_complex<br/>volume 0 windows, adelay, loudnorm, amix, alimiter<br/>video copied"]
+  AP --> HC{"cuts present?"}
+  CUTS --> HC
+  HC -->|no| OUT[("versions/vN.mp4")]
+  HC -->|yes| CUT["edit_ops.cut<br/>keep segments, fades, re-encode"] --> OUT
+</pre>
+  </div>
+</section>
+
+<section id="classes" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Class diagram</h2>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+classDiagram
+  class Job {
+    +video
+    +folder
+    +work
+    +title
+    +context
+    +terms
+    +mode
+    +opts
+    +at(parts) str
+    +llm_context() str
+    +whisper_terms() str
+    +load_settings()
+    +save_settings()
+  }
+  class Step {
+    +key
+    +title
+    +run(job)
+    +needs(job) dict
+    +outputs(job) list
+  }
+  class RunLog {
+    +path
+    +step_key
+    +open(folder, meta)
+    +step_start(key, title, index)
+    +step_end(status, error)
+    +finish(outcome, error)
+  }
+  class Project {
+    +folder
+    +data
+    +versions
+    +cursor
+    +pending
+    +settings
+    +current_file() str
+    +add_edits(texts)
+    +remove_pending(number)
+    +commit(edits, path, label)
+    +undo()
+    +redo()
+    +next_version_path() str
+    +export_path(out) str
+  }
+  class Edit {
+    +type
+    +start
+    +end
+    +text
+    +parse(line)
+    +to_text(edit)
+    +uses_api(edit) bool
+  }
+  class ApiError
+  class Abort
+  Job "1" --> "7" Step : STEPS list runs with job
+  Job ..> RunLog : logs.current
+  Project "1" o-- "many" Edit : pending
+  Project ..> RunLog : logs.current
+  Step ..> Job : needs and outputs read paths
+  Abort --|> Exception
+  ApiError --|> Exception
+</pre>
+  </div>
+</section>
+
+<section id="data" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Data model</h2>
+  <p class="text-slate-600">Persistent JSON: <code class="font-mono text-sm">project.json</code> for demo.py and <code class="font-mono text-sm">logs/log_&lt;timestamp&gt;.json</code> for every tool.</p>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
+<pre class="mermaid">
+erDiagram
+  PROJECT ||--o{ VERSION : has
+  PROJECT ||--o{ PENDING_EDIT : queues
+  PROJECT ||--|| SETTINGS : uses
+  VERSION ||--o{ APPLIED_EDIT : records
+  RUN_LOG ||--o{ STEP_RECORD : contains
+  RUN_LOG ||--o{ EVENT : contains
+  RUN_LOG ||--|| API_USAGE : counts
+
+  PROJECT {
+    int format
+    string name
+    string original_name
+    string created
+    int cursor
+    int counter
+  }
+  VERSION {
+    int id
+    string file
+    string label
+    string created
+    float seconds
+  }
+  PENDING_EDIT {
+    string type
+    float start
+    float end
+    string text
+  }
+  APPLIED_EDIT {
+    string type
+    float start
+    float end
+  }
+  SETTINGS {
+    string voice
+    string tts_model
+    string text_model
+    string style
+    float max_tempo
+  }
+  RUN_LOG {
+    string id
+    string mode
+    string title
+    string status
+    float duration_seconds
+    string started
+    string finished
+    string error
+  }
+  STEP_RECORD {
+    int index
+    string key
+    string title
+    string status
+    float seconds
+    string error
+  }
+  EVENT {
+    string time
+    string level
+    string step
+    string message
+  }
+  API_USAGE {
+    int transcriptions
+    int chat_completions
+    int speech
+  }
+</pre>
+  </div>
+</section>
+
+<section id="modules" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Module reference</h2>
+  <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 text-left"><tr><th class="px-4 py-2">Module</th><th class="px-4 py-2">Responsibility</th><th class="px-4 py-2">Key functions</th></tr></thead>
+      <tbody class="divide-y divide-slate-100 align-top">
+        <tr><td class="px-4 py-2 font-mono">ai_dub.py</td><td class="px-4 py-2">CLI: args, resume menu, title and mode prompts, dependency gate, error handling</td><td class="px-4 py-2 font-mono text-xs">main, pick_steps, ask_title, ask_mode, run</td></tr>
+        <tr><td class="px-4 py-2 font-mono">demo.py</td><td class="px-4 py-2">Studio: guided menu and subcommands for projects, plan, apply, preview, undo, export, dub</td><td class="px-4 py-2 font-mono text-xs">menu, apply_pending, confirm_plan, make_plan, run_command</td></tr>
+        <tr><td class="px-4 py-2 font-mono">video_edit.py</td><td class="px-4 py-2">Stateless cut, narrate, info; interactive loop chaining edits</td><td class="px-4 py-2 font-mono text-xs">Session, do_cut, do_narrate, run_interactive</td></tr>
+        <tr><td class="px-4 py-2 font-mono">pipeline.py</td><td class="px-4 py-2">Job paths and settings, seven step functions, Step registry, dependency check, runner with checkpoints</td><td class="px-4 py-2 font-mono text-xs">Job, STEPS, find_problems, run_steps, is_done</td></tr>
+        <tr><td class="px-4 py-2 font-mono">openai_api.py</td><td class="px-4 py-2">Raw HTTPS calls with retries, deadline, key redaction. No SDK</td><td class="px-4 py-2 font-mono text-xs">call, transcribe, transcribe_text, chat_json, improve_segments, shorten, synthesize</td></tr>
+        <tr><td class="px-4 py-2 font-mono">media.py</td><td class="px-4 py-2">ffmpeg and ffprobe wrappers, silence detection, hallucination filter, edge snapping, slot assignment, track build, final assemble</td><td class="px-4 py-2 font-mono text-xs">detect_silences, drop_hallucinations, refine_edges, assign_slots, build_track, assemble</td></tr>
+        <tr><td class="px-4 py-2 font-mono">speech.py</td><td class="px-4 py-2">TTS with hash cache, pause splitting, fit loop with shortening</td><td class="px-4 py-2 font-mono text-xs">ensure_audio, synth_and_fit, make_voice, make_thanks</td></tr>
+        <tr><td class="px-4 py-2 font-mono">validate.py</td><td class="px-4 py-2">Per-line checks: speech present, starts early, overlap, second-opinion word match</td><td class="px-4 py-2 font-mono text-xs">check_lines, write_report</td></tr>
+        <tr><td class="px-4 py-2 font-mono">review.py / editor.py</td><td class="px-4 py-2">Human checkpoints and curses line editor</td><td class="px-4 py-2 font-mono text-xs">transcript_checkpoint, script_checkpoint, review_loop, edit_lines</td></tr>
+        <tr><td class="px-4 py-2 font-mono">cards.py</td><td class="px-4 py-2">Title card text layout, end card fit, font discovery (Pillow)</td><td class="px-4 py-2 font-mono text-xs">render_title_card, fit_end_card, find_font</td></tr>
+        <tr><td class="px-4 py-2 font-mono">edits.py</td><td class="px-4 py-2">Parse and format edit words, voice parts with pauses</td><td class="px-4 py-2 font-mono text-xs">parse, to_text, parts, uses_api</td></tr>
+        <tr><td class="px-4 py-2 font-mono">plan.py</td><td class="px-4 py-2">Pre-render analysis: time after cuts, clipped-speech warnings, voice overlap, voice inside cut errors</td><td class="px-4 py-2 font-mono text-xs">analyse, snap_edits, final_time</td></tr>
+        <tr><td class="px-4 py-2 font-mono">render.py</td><td class="px-4 py-2">Apply an edit batch: voices, shifts, mutes, single audio pass, then cuts</td><td class="px-4 py-2 font-mono text-xs">render, make_voices, resolve_shifts, audio_pass</td></tr>
+        <tr><td class="px-4 py-2 font-mono">edit_ops.py</td><td class="px-4 py-2">Frame-accurate cut with fades; narrate with fit to window</td><td class="px-4 py-2 font-mono text-xs">cut, fit_voice, narrate, keep_segments</td></tr>
+        <tr><td class="px-4 py-2 font-mono">speechmap.py</td><td class="px-4 py-2">Speech intervals from silences, block grouping by gap</td><td class="px-4 py-2 font-mono text-xs">speech_intervals, group, find_block</td></tr>
+        <tr><td class="px-4 py-2 font-mono">project.py</td><td class="px-4 py-2">Project folder, atomic project.json writes, version list with cursor, recent list</td><td class="px-4 py-2 font-mono text-xs">create, load, resolve, Project.commit, undo, redo</td></tr>
+        <tr><td class="px-4 py-2 font-mono">logs.py / ui.py</td><td class="px-4 py-2">JSON event log rewritten per event, single-line spinner, prompts</td><td class="px-4 py-2 font-mono text-xs">RunLog, redact, status, ask, choose</td></tr>
+        <tr><td class="px-4 py-2 font-mono">config.py</td><td class="px-4 py-2">API URL, durations, voice templates, and the four LLM system prompts (improve, shorten, revise, title/closing detection)</td><td class="px-4 py-2 font-mono text-xs">INTRO_SECONDS 2, END_SECONDS 3, CHARS_PER_SECOND 14</td></tr>
+        <tr><td class="px-4 py-2 font-mono">pauses.py / timecode.py / deps.py / transcript.py / script.py</td><td class="px-4 py-2">Small helpers: pause markers, time parsing, tool checks, markdown IO, timeline building</td><td class="px-4 py-2 font-mono text-xs">split, has, parse_time, require, write_md, timeline</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="steps" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Pipeline steps</h2>
+  <p class="text-slate-600">Each <code class="font-mono text-sm">Step</code> declares what it <em>needs</em> (tools, API key, input files and which step produces them) and what it <em>outputs</em>. This drives both the up-front dependency check and the done / not done menu.</p>
+  <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 text-left"><tr><th class="px-4 py-2">#</th><th class="px-4 py-2">Key</th><th class="px-4 py-2">What it does</th><th class="px-4 py-2">Needs</th><th class="px-4 py-2">Outputs</th></tr></thead>
+      <tbody class="divide-y divide-slate-100 align-top">
+        <tr><td class="px-4 py-2">1</td><td class="px-4 py-2 font-mono">extract</td><td class="px-4 py-2">Fails if no audio track; extracts WAV</td><td class="px-4 py-2 text-xs">ffmpeg, video</td><td class="px-4 py-2 font-mono text-xs">work/original.wav</td></tr>
+        <tr><td class="px-4 py-2">2</td><td class="px-4 py-2 font-mono">transcribe</td><td class="px-4 py-2">Whisper with glossary prompt, then title-intro removal, closing-thanks removal, hallucination drop</td><td class="px-4 py-2 text-xs">API, wav</td><td class="px-4 py-2 font-mono text-xs">transcript.json, transcript.md</td></tr>
+        <tr><td class="px-4 py-2">3</td><td class="px-4 py-2 font-mono">validate</td><td class="px-4 py-2">Silence checks plus second transcription; flags lines as CHECK. Second opinion failure only warns</td><td class="px-4 py-2 text-xs">API, ffmpeg, transcript, wav</td><td class="px-4 py-2 font-mono text-xs">validation.md</td></tr>
+        <tr><td class="px-4 py-2">4</td><td class="px-4 py-2 font-mono">improve</td><td class="px-4 py-2">LLM rewrite in chunks of 60 with context, slot length and second transcription as evidence. <code>--no-improve</code> skips</td><td class="px-4 py-2 text-xs">API (unless no-improve)</td><td class="px-4 py-2 font-mono text-xs">transcript_improved.md</td></tr>
+        <tr><td class="px-4 py-2">5</td><td class="px-4 py-2 font-mono">speech</td><td class="px-4 py-2">Apply human edits from markdown, TTS with fit loop, thanks voice</td><td class="px-4 py-2 text-xs">API, ffmpeg, improved script</td><td class="px-4 py-2 font-mono text-xs">work/speech.json</td></tr>
+        <tr><td class="px-4 py-2">6</td><td class="px-4 py-2 font-mono">cards</td><td class="px-4 py-2">Title card sized to video, title voice, end card. Removes stale title files if title cleared</td><td class="px-4 py-2 text-xs">Pillow, font, API if title</td><td class="px-4 py-2 font-mono text-xs">title_card.png, end_card.png, title_voice.json</td></tr>
+        <tr><td class="px-4 py-2">7</td><td class="px-4 py-2 font-mono">assemble</td><td class="px-4 py-2">Tempo-fit each clip, delay, amix, denoise (afftdn), loudnorm, concat intro + video + end card, write report</td><td class="px-4 py-2 text-xs">ffmpeg, speech.json, cards</td><td class="px-4 py-2 font-mono text-xs">video_ai.mp4, report.md</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="design" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Design decisions</h2>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">Measured onset, not Whisper time</h3>
+      <p class="text-sm text-slate-600 mt-1">Whisper timestamps run late by 0.1 to 0.7 s. <code class="font-mono">refine_edges</code> snaps starts to real speech onsets found with ffmpeg <code class="font-mono">silencedetect</code>. Disable with <code class="font-mono">--no-snap</code>.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">Hash-keyed speech cache</h3>
+      <p class="text-sm text-slate-600 mt-1">Clip path is a SHA-1 of TTS model, voice, style and text. Re-runs and re-applies only pay for changed lines.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">Fit loop before overlap</h3>
+      <p class="text-sm text-slate-600 mt-1">Speed-up is capped at 1.3x for naturalness. Beyond that the LLM shortens the text, at most three rounds, then a warning is logged.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">Two-model validation</h3>
+      <p class="text-sm text-slate-600 mt-1">A second, independent transcription catches mishearings and invented lines one model produced. Used as flags and as rewrite evidence, never as ground truth.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">Edits are data</h3>
+      <p class="text-sm text-slate-600 mt-1">Edit words parse to dicts stored in <code class="font-mono">project.json</code>. Plan and render are pure functions of the current file plus that list, so apply is repeatable and undoable.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">Safe state changes</h3>
+      <p class="text-sm text-slate-600 mt-1">project.json is written to a temp file then <code class="font-mono">os.replace</code>d. A failed render deletes its partial output and leaves pending edits untouched.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">No project knowledge in code</h3>
+      <p class="text-sm text-slate-600 mt-1">Glossary and naming rules live in a user text file passed with <code class="font-mono">--context-file</code>. The prompts in config.py stay generic.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold">One status line, full JSON log</h3>
+      <p class="text-sm text-slate-600 mt-1">Terminal shows a spinner line only. Every OpenAI request, ffmpeg command and human action goes to the log, rewritten per event so crashes keep it.</p>
+    </div>
+  </div>
+</section>
+
+<section id="options" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Options (ai_dub.py)</h2>
+  <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 text-left"><tr><th class="px-4 py-2">Option</th><th class="px-4 py-2">Default</th><th class="px-4 py-2">Description</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="px-4 py-2 font-mono">--out-dir</td><td class="px-4 py-2">next to video</td><td class="px-4 py-2">Parent folder for the per-video folder</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--voice</td><td class="px-4 py-2 font-mono">nova</td><td class="px-4 py-2">OpenAI TTS voice</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--tts-model</td><td class="px-4 py-2 font-mono">gpt-4o-mini-tts</td><td class="px-4 py-2">Speech model</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--text-model</td><td class="px-4 py-2 font-mono">gpt-4.1</td><td class="px-4 py-2">Rewrite and shorten model</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--transcribe-model</td><td class="px-4 py-2 font-mono">whisper-1</td><td class="px-4 py-2">Must return segment timestamps</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--validate-model</td><td class="px-4 py-2 font-mono">gpt-4o-transcribe</td><td class="px-4 py-2">Independent second transcription</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--language</td><td class="px-4 py-2 font-mono">en</td><td class="px-4 py-2">ISO-639-1 code, empty for auto</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--style</td><td class="px-4 py-2">warm, conversational</td><td class="px-4 py-2">TTS speaking-style instructions</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--max-tempo</td><td class="px-4 py-2 font-mono">1.3</td><td class="px-4 py-2">Max speed-up to fit a slot</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--lead</td><td class="px-4 py-2 font-mono">1.0</td><td class="px-4 py-2">Seconds an AI line starts before the original speech</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--end-grace</td><td class="px-4 py-2 font-mono">0.5</td><td class="px-4 py-2">Seconds an AI line may run past the original end</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--context-file</td><td class="px-4 py-2">none</td><td class="px-4 py-2">Glossary and notes; lines starting <code>Terms:</code> help transcription</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--font</td><td class="px-4 py-2">auto</td><td class="px-4 py-2">Bold .ttf or .otf for the title card</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--no-snap</td><td class="px-4 py-2">off</td><td class="px-4 py-2">Do not align lines to measured speech</td></tr>
+        <tr><td class="px-4 py-2 font-mono">--no-improve</td><td class="px-4 py-2">off</td><td class="px-4 py-2">Voice the raw transcript</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="logs" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Logs</h2>
+  <p class="text-slate-600">Every run writes <code class="font-mono text-sm">logs/log_&lt;timestamp&gt;.json</code>. Levels: <code class="font-mono text-sm">success</code>, <code class="font-mono text-sm">info</code>, <code class="font-mono text-sm">warning</code>, <code class="font-mono text-sm">error</code>, <code class="font-mono text-sm">debug</code> (every OpenAI request with status, timing, retries, and every ffmpeg command). The API key is redacted everywhere.</p>
+  <pre class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm overflow-x-auto"><code>{
+  "run":   { "id", "mode", "title", "context", "status", "duration_seconds",
+             "selected_steps", "options", "started", "finished", "error" },
+  "steps": [ { "index", "key", "title", "status", "seconds", "started", "ended", "error" } ],
+  "api_usage": { "/audio/transcriptions": 1, "/chat/completions": 12, "/audio/speech": 9 },
+  "events": [ { "time", "level", "step", "message" } ]
+}</code></pre>
+</section>
+
+<section id="requirements" class="space-y-4">
+  <h2 class="text-2xl font-bold text-slate-900">Requirements and troubleshooting</h2>
+  <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 text-left"><tr><th class="px-4 py-2">Message</th><th class="px-4 py-2">Fix</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="px-4 py-2">needs 'ffmpeg' / 'ffprobe'</td><td class="px-4 py-2 font-mono text-xs">brew install ffmpeg</td></tr>
+        <tr><td class="px-4 py-2">needs OPENAI_API_KEY</td><td class="px-4 py-2 font-mono text-xs">export OPENAI_API_KEY=... in ~/.zshrc, then source it</td></tr>
+        <tr><td class="px-4 py-2">needs Pillow</td><td class="px-4 py-2 font-mono text-xs">python3 -m pip install pillow</td></tr>
+        <tr><td class="px-4 py-2">needs a bold font</td><td class="px-4 py-2 font-mono text-xs">--font /path/to/Bold.ttf</td></tr>
+        <tr><td class="px-4 py-2">is missing FILE, run step N first</td><td class="px-4 py-2">Run the named earlier step, or use <code class="font-mono">N+</code> in the resume menu</td></tr>
+        <tr><td class="px-4 py-2">the video has no audio track</td><td class="px-4 py-2">ai_dub needs speech to transcribe. demo.py narrate works without audio</td></tr>
+        <tr><td class="px-4 py-2">seg overflows its slot</td><td class="px-4 py-2">Shorten the line in transcript_improved.md or raise <code class="font-mono">--max-tempo</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="list-disc pl-6 text-sm text-slate-600 space-y-1">
+    <li>Final video is re-encoded (H.264, CRF 18, AAC 192k) because cards are joined. Audio-only edits copy the picture.</li>
+    <li>Only speech is regenerated by ai_dub. Original music and sound effects are dropped.</li>
+    <li>The API key comes from the environment only and is never written to disk.</li>
+    <li>Cost is a few cents per minute of video.</li>
+  </ul>
+</section>
+
+</main>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose', flowchart: { htmlLabels: true, curve: 'basis' }, sequence: { mirrorActors: false, useMaxWidth: true } });
+</script>
+</body>
+</html>
